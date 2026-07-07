@@ -3,13 +3,10 @@ import json
 from flask import Flask, request, jsonify, send_from_directory
 from flask_cors import CORS
 
-# ========== 创建 Flask 应用 ==========
 app = Flask(__name__)
-app.config['JSON_AS_ASCII'] = False   # 保证中文日文正常显示
+# 保持默认 JSON_AS_ASCII=True，确保所有非 ASCII 字符转义为 \uXXXX，兼容手环解析器
 CORS(app)
 
-# ========== 配置漫画根目录 ==========
-# 漫画文件夹放在项目根目录下的 comics/ 中，与 api/ 同级
 COMICS_ROOT = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'comics')
 
 
@@ -20,14 +17,6 @@ def load_comic_meta(comic_id):
         return None
     with open(path, 'r', encoding='utf-8') as f:
         return json.load(f)
-
-
-def get_absolute_url(relative_path):
-    """将相对路径转换为完整的 HTTPS URL"""
-    # Vercel 环境下 request.url_root 会包含协议和域名
-    # 但为了让 /config 等无请求上下文的地方也能用，我们在路由中直接使用 request.url_root
-    # 这里保留为辅助函数，但实际在路由中拼接更安全
-    return relative_path
 
 
 def get_chapter_images(comic_id, chapter_index):
@@ -45,20 +34,17 @@ def get_chapter_images(comic_id, chapter_index):
     urls = []
     for p in range(start_page, end_page + 1):
         fname = f"{p:05d}.jpeg"
-        # 使用 /comics/{id}/{filename} 相对路径
         urls.append(f"/comics/{comic_id}/{fname}")
     return urls
 
 
-# ==================== 必须实现的官方接口 ====================
-
 @app.route('/config', methods=['GET'])
 def config():
-    """返回漫画源配置"""
+    """返回漫画源配置（使用中文，Flask 自动转为 \u 转义，手环可安全解析）"""
     return jsonify({
         "sourceKey": "SRYP",
         "name": "我的自用源",
-        "apiUrl": "https://sryp.vercel.app",   # 固定你的域名
+        "apiUrl": "https://sryp.vercel.app",
         "detailPath": "/detail/{{id}}",
         "photoPath": "/photo/{{id}}/{{chapter}}",
         "searchPath": "/search/{{keyword}}/{{page}}"
@@ -72,7 +58,6 @@ def detail(comic_id):
     if not meta:
         return jsonify({"code": 404, "message": "漫画不存在"}), 404
 
-    # 封面使用绝对路径
     cover_url = request.url_root + f"comics/{comic_id}/{meta['cover']}"
     return jsonify({
         "item_id": comic_id,
@@ -86,7 +71,7 @@ def detail(comic_id):
 
 @app.route('/search/<keyword>/<int:page>', methods=['GET'])
 def search(keyword, page):
-    """搜索漫画"""
+    """搜索漫画（支持分页）"""
     results = []
     if not os.path.exists(COMICS_ROOT):
         return jsonify({"page": page, "has_more": False, "results": []})
@@ -118,9 +103,7 @@ def photo(comic_id, chapter):
     if relative_urls is None:
         return jsonify({"code": 404, "message": "章节不存在"}), 404
 
-    # 转换为绝对路径
     absolute_urls = [request.url_root + url.lstrip('/') for url in relative_urls]
-
     meta = load_comic_meta(comic_id)
     chapter_name = meta['chapters'][chapter]['name'] if meta else f"第{chapter+1}话"
     return jsonify({
@@ -129,16 +112,14 @@ def photo(comic_id, chapter):
     })
 
 
-# ==================== 图片代理路由（当静态托管不可用时备用） ====================
 @app.route('/comics/<comic_id>/<filename>')
 def serve_comic_image(comic_id, filename):
-    """直接返回漫画图片（用于绝对路径的请求）"""
+    """通过 API 返回漫画图片（代理路由）"""
     safe_dir = os.path.join(COMICS_ROOT, comic_id)
     if not os.path.exists(safe_dir):
         return jsonify({"code": 404, "message": "漫画不存在"}), 404
     return send_from_directory(safe_dir, filename)
 
 
-# ==================== 本地调试入口 ====================
 if __name__ == '__main__':
     app.run(debug=True, port=5000)
