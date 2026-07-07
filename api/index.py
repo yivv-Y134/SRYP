@@ -7,7 +7,7 @@ app = Flask(__name__)
 CORS(app)
 
 # 漫画数据根目录（相对于项目根目录）
-COMICS_ROOT = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'comics')
+COMICS_ROOT = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'public', 'comics')
 
 def load_comic_meta(comic_id):
     """读取漫画的 head.json"""
