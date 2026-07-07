@@ -44,7 +44,7 @@ def config():
             "apiUrl": "https://sryp.vercel.app",
             "detailPath": "/detail/{{id}}",
             "photoPath": "/photo/{{id}}/{{chapter}}",
-            "searchPath": "/search/{{keyword}}/{{page}}"
+            "searchPath": "/search/{keyword}/{page}"
         }
     })
 
