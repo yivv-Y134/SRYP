@@ -13,6 +13,5 @@
       "dest": "/comics/$1",
       "continue": true
     }
-  ],
-  "public": false
+  ]
 }
