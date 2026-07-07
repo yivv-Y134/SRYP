@@ -18,7 +18,10 @@ def load_comic_meta(comic_id):
 
 
 def get_chapter_images(comic_id, chapter_index):
-    """根据章节索引返回该章节所有图片的【相对路径】列表"""
+    """
+    根据章节索引（0-based）返回该章节所有图片的【相对路径】列表
+    使用 start/end 起止页码
+    """
     meta = load_comic_meta(comic_id)
     if not meta:
         return None
@@ -29,7 +32,6 @@ def get_chapter_images(comic_id, chapter_index):
     start = chapter.get('start')
     end = chapter.get('end')
     if start is None or end is None:
-        # 如果缺少 start/end，返回错误（兼容旧格式可酌情处理）
         return None
     urls = []
     for p in range(start, end + 1):
@@ -60,9 +62,9 @@ def album(item_id):
     api_url = request.host_url.rstrip('/')
     cover_url = f"{api_url}/comics/{item_id}/{meta['cover']}"
 
-    # 计算总页数（基于所有章节的起止）
     chapters = meta.get('chapters', [])
-    total_pages = sum(ch['end'] - ch['start'] + 1 for ch in chapters if 'start' in ch and 'end' in ch)
+    # 计算总页数（基于所有章节的起止）
+    total_pages = sum(ch.get('end', 0) - ch.get('start', 0) + 1 for ch in chapters if 'start' in ch and 'end' in ch)
 
     return jsonify({
         "item_id": item_id,
@@ -102,14 +104,29 @@ def search(text, page):
 
 @app.route('/photo/<item_id>/chapter/<int:chapter>', methods=['GET'])
 def photo_list(item_id, chapter):
-    relative_urls = get_chapter_images(item_id, chapter)
-    if relative_urls is None:
-        return jsonify({"code": 404, "message": "章节不存在"}), 404
-    api_url = request.host_url.rstrip('/')
-    absolute_urls = [f"{api_url}{url}" for url in relative_urls]  # relative 以 / 开头
+    """
+    手表传递的 chapter 是从 1 开始计数的（即第1话、第2话...）
+    后端数组索引从 0 开始，所以需要 chapter - 1
+    """
+    chapter_index = chapter - 1
+    if chapter_index < 0:
+        return jsonify({"code": 404, "message": "章节索引无效"}), 404
+
     meta = load_comic_meta(item_id)
+    if not meta:
+        return jsonify({"code": 404, "message": "漫画不存在"}), 404
+    total_chapters = len(meta.get('chapters', []))
+    if chapter_index >= total_chapters:
+        return jsonify({"code": 404, "message": "章节不存在"}), 404
+
+    relative_urls = get_chapter_images(item_id, chapter_index)
+    if relative_urls is None:
+        return jsonify({"code": 404, "message": "章节数据错误"}), 404
+
+    api_url = request.host_url.rstrip('/')
+    absolute_urls = [f"{api_url}{url}" for url in relative_urls]
     chapters = meta.get('chapters', [])
-    chapter_name = chapters[chapter]['name'] if chapter < len(chapters) else f"第{chapter+1}话"
+    chapter_name = chapters[chapter_index]['name'] if chapter_index < len(chapters) else f"第{chapter}话"
     return jsonify({
         "title": chapter_name,
         "images": [{"url": url} for url in absolute_urls]
