@@ -18,18 +18,21 @@ def load_comic_meta(comic_id):
 
 
 def get_chapter_images(comic_id, chapter_index):
+    """根据章节索引返回该章节所有图片的【相对路径】列表"""
     meta = load_comic_meta(comic_id)
     if not meta:
         return None
     chapters = meta.get('chapters', [])
     if chapter_index < 0 or chapter_index >= len(chapters):
         return None
-    start_page = 1
-    for i in range(chapter_index):
-        start_page += chapters[i]['page_count']
-    end_page = start_page + chapters[chapter_index]['page_count'] - 1
+    chapter = chapters[chapter_index]
+    start = chapter.get('start')
+    end = chapter.get('end')
+    if start is None or end is None:
+        # 如果缺少 start/end，返回错误（兼容旧格式可酌情处理）
+        return None
     urls = []
-    for p in range(start_page, end_page + 1):
+    for p in range(start, end + 1):
         fname = f"{p:05d}.jpeg"
         urls.append(f"/comics/{comic_id}/{fname}")
     return urls
@@ -51,25 +54,28 @@ def config():
 
 @app.route('/album/<item_id>', methods=['GET'])
 def album(item_id):
-    """对应 detailPath: /album/<id>"""
     meta = load_comic_meta(item_id)
     if not meta:
         return jsonify({"code": 404, "message": "漫画不存在"}), 404
     api_url = request.host_url.rstrip('/')
     cover_url = f"{api_url}/comics/{item_id}/{meta['cover']}"
+
+    # 计算总页数（基于所有章节的起止）
+    chapters = meta.get('chapters', [])
+    total_pages = sum(ch['end'] - ch['start'] + 1 for ch in chapters if 'start' in ch and 'end' in ch)
+
     return jsonify({
         "item_id": item_id,
         "name": meta['name'],
         "cover": cover_url,
-        "page_count": meta['page_count'],
-        "total_chapters": len(meta.get('chapters', [])),
+        "page_count": total_pages,
+        "total_chapters": len(chapters),
         "tags": meta.get('tags', [])
     })
 
 
 @app.route('/search/<text>/<int:page>', methods=['GET'])
 def search(text, page):
-    """对应 searchPath: /search/<text>/<page>"""
     results = []
     if not os.path.exists(COMICS_ROOT):
         return jsonify({"page": page, "has_more": False, "results": []})
@@ -96,14 +102,14 @@ def search(text, page):
 
 @app.route('/photo/<item_id>/chapter/<int:chapter>', methods=['GET'])
 def photo_list(item_id, chapter):
-    """对应 photoPath: /photo/<id>/chapter/<chapter>"""
     relative_urls = get_chapter_images(item_id, chapter)
     if relative_urls is None:
         return jsonify({"code": 404, "message": "章节不存在"}), 404
     api_url = request.host_url.rstrip('/')
-    absolute_urls = [f"{api_url}{url}" for url in relative_urls]  # relative_urls 以 / 开头
+    absolute_urls = [f"{api_url}{url}" for url in relative_urls]  # relative 以 / 开头
     meta = load_comic_meta(item_id)
-    chapter_name = meta['chapters'][chapter]['name'] if meta else f"第{chapter+1}话"
+    chapters = meta.get('chapters', [])
+    chapter_name = chapters[chapter]['name'] if chapter < len(chapters) else f"第{chapter+1}话"
     return jsonify({
         "title": chapter_name,
         "images": [{"url": url} for url in absolute_urls]
