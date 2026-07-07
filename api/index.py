@@ -37,26 +37,28 @@ def get_chapter_images(comic_id, chapter_index):
 
 @app.route('/config', methods=['GET'])
 def config():
-    """返回漫画源配置 - 符合官方规范：以 sourceKey 为键的嵌套对象"""
+    api_url = request.host_url.rstrip('/')
     return jsonify({
         "SRYP": {
             "name": "我的自用源",
-            "apiUrl": "https://sryp.vercel.app",
-            "detailPath": "/detail/{{id}}",
-            "photoPath": "/photo/{{id}}/{{chapter}}",
-            "searchPath": "/search/{keyword}/{page}"
+            "apiUrl": api_url,
+            "detailPath": "/album/<id>",
+            "photoPath": "/photo/<id>/chapter/<chapter>",
+            "searchPath": "/search/<text>/<page>"
         }
     })
 
 
-@app.route('/detail/<comic_id>', methods=['GET'])
-def detail(comic_id):
-    meta = load_comic_meta(comic_id)
+@app.route('/album/<item_id>', methods=['GET'])
+def album(item_id):
+    """对应 detailPath: /album/<id>"""
+    meta = load_comic_meta(item_id)
     if not meta:
         return jsonify({"code": 404, "message": "漫画不存在"}), 404
-    cover_url = request.url_root + f"comics/{comic_id}/{meta['cover']}"
+    api_url = request.host_url.rstrip('/')
+    cover_url = f"{api_url}/comics/{item_id}/{meta['cover']}"
     return jsonify({
-        "item_id": comic_id,
+        "item_id": item_id,
         "name": meta['name'],
         "cover": cover_url,
         "page_count": meta['page_count'],
@@ -65,19 +67,21 @@ def detail(comic_id):
     })
 
 
-@app.route('/search/<keyword>/<int:page>', methods=['GET'])
-def search(keyword, page):
+@app.route('/search/<text>/<int:page>', methods=['GET'])
+def search(text, page):
+    """对应 searchPath: /search/<text>/<page>"""
     results = []
     if not os.path.exists(COMICS_ROOT):
         return jsonify({"page": page, "has_more": False, "results": []})
+    api_url = request.host_url.rstrip('/')
     for comic_id in os.listdir(COMICS_ROOT):
         meta_path = os.path.join(COMICS_ROOT, comic_id, 'head.json')
         if not os.path.isfile(meta_path):
             continue
         with open(meta_path, 'r', encoding='utf-8') as f:
             meta = json.load(f)
-        if keyword.lower() in meta.get('searchName', '').lower():
-            cover_url = request.url_root + f"comics/{comic_id}/{meta['cover']}"
+        if text.lower() in meta.get('searchName', '').lower():
+            cover_url = f"{api_url}/comics/{comic_id}/{meta['cover']}"
             results.append({
                 "comic_id": comic_id,
                 "title": meta['name'],
@@ -90,13 +94,15 @@ def search(keyword, page):
     })
 
 
-@app.route('/photo/<comic_id>/<int:chapter>', methods=['GET'])
-def photo(comic_id, chapter):
-    relative_urls = get_chapter_images(comic_id, chapter)
+@app.route('/photo/<item_id>/chapter/<int:chapter>', methods=['GET'])
+def photo_list(item_id, chapter):
+    """对应 photoPath: /photo/<id>/chapter/<chapter>"""
+    relative_urls = get_chapter_images(item_id, chapter)
     if relative_urls is None:
         return jsonify({"code": 404, "message": "章节不存在"}), 404
-    absolute_urls = [request.url_root + url.lstrip('/') for url in relative_urls]
-    meta = load_comic_meta(comic_id)
+    api_url = request.host_url.rstrip('/')
+    absolute_urls = [f"{api_url}{url}" for url in relative_urls]  # relative_urls 以 / 开头
+    meta = load_comic_meta(item_id)
     chapter_name = meta['chapters'][chapter]['name'] if meta else f"第{chapter+1}话"
     return jsonify({
         "title": chapter_name,
