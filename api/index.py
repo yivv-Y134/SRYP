@@ -50,7 +50,7 @@ def config():
     return jsonify({
         "sourceKey": "SRYP",               # 唯一标识
         "name": "我的自用源",
-        "apiUrl": "https://yapi.vercel.app",  # 部署后替换
+        "apiUrl": "https://syip.vercel.app",  # 部署后替换
         "detailPath": "/detail/{{id}}",
         "photoPath": "/photo/{{id}}/{{chapter}}",
         "searchPath": "/search/{{keyword}}/{{page}}"
